@@ -35,7 +35,7 @@ jobs:
       run: |
         # Injects pyjnius along with python3, kivy, and flask
         sed -i 's/^requirements = .*/requirements = python3, kivy, pyjnius, flask, requests/' buildozer.spec
-        # Injects the broad storage permissions you need for local file handling
+        # Requests storage permissions and Android's broad MANAGE_EXTERNAL_STORAGE access
         sed -i 's/^#android.permissions = .*/android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE/' buildozer.spec
         # Locks API targeting to version 33 for modern compatibility
         sed -i 's/^#android.api = .*/android.api = 33/' buildozer.spec
