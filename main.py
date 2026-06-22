@@ -3,22 +3,15 @@ import re
 import shutil
 import base64
 import datetime
-import threading
 from flask import Flask, render_template_string, request, jsonify, send_file
 
-# Kivy and Android imports
-from kivy.app import App
-from kivy.clock import Clock
-from kivy.utils import platform
-
-# --- FLASK ENGINE INITIALIZATION ---
 app = Flask(__name__)
 
 # --- SYSTEM CONFIGURATION ---
 if os.path.exists('/storage/emulated/0/'):
-    BASE_DIR = '/storage/emulated/0/'  # Android Termux / Native Storage
+    BASE_DIR = '/storage/emulated/0/'  # Android Termux
 else:
-    BASE_DIR = os.path.expanduser('~') # PC/Mac fallback
+    BASE_DIR = os.path.expanduser('~') # PC/Mac
 
 CURRENT_DIR = BASE_DIR
 PENDING_DELETE = None 
@@ -734,67 +727,5 @@ def chat():
     res["reply"] = "Command unverified. Please state your directive clearly, sir."
     return jsonify(res)
 
-
-# ==========================================
-# BACKGROUND ENGINE & NATIVE INTERFACE
-# ==========================================
-def run_flask_backend():
-    """Launches the Flask web API on localhost:5000 in a silent, background thread."""
-    app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
-
-# Android Native View Setup
-if platform == 'android':
-    from android.permissions import request_permissions, Permission
-    from android.runnable import run_on_ui_thread
-    from jnius import autoclass
-    
-    WebView = autoclass('android.webkit.WebView')
-    WebViewClient = autoclass('android.webkit.WebViewClient')
-    activity = autoclass('org.kivy.android.PythonActivity').mActivity
-    
-    @run_on_ui_thread
-    def create_webview(*args):
-        # 1. Ask the mobile user for storage and network privileges
-        request_permissions([
-            Permission.INTERNET,
-            Permission.READ_EXTERNAL_STORAGE,
-            Permission.WRITE_EXTERNAL_STORAGE,
-            "android.permission.MANAGE_EXTERNAL_STORAGE"
-        ])
-        
-        # 2. Create the Android browser controller
-        webview = WebView(activity)
-        webview.getSettings().setJavaScriptEnabled(True)
-        webview.getSettings().setDomStorageEnabled(True)
-        webview.getSettings().setAllowFileAccess(True)
-        webview.getSettings().setAllowContentAccess(True)
-        
-        # Keep routing and links opening inside our app rather than Chrome
-        wvc = WebViewClient()
-        webview.setWebViewClient(wvc)
-        
-        # Overwrite the viewport with the local Flask server
-        activity.setContentView(webview)
-        webview.loadUrl('http://127.0.0.1:5000')
-else:
-    # Fallback script to test on PC/Mac standard browsers
-    def create_webview(*args):
-        import webbrowser
-        print("Testing Locally: Redirecting to browser core.")
-        webbrowser.open('http://127.0.0.1:5000')
-
-class JarvisWebviewApp(App):
-    def build(self):
-        # Schedule webview initialization on application launch
-        Clock.schedule_once(create_webview, 0)
-        from kivy.uix.widget import Widget
-        return Widget()
-
 if __name__ == '__main__':
-    # Start the Flask background server
-    backend_thread = threading.Thread(target=run_flask_backend)
-    backend_thread.daemon = True
-    backend_thread.start()
-    
-    # Run Kivy window engine to keep the Android main process alive
-    JarvisWebviewApp().run()
+    app.run(host='0.0.0.0', port=5000, debug=False)
