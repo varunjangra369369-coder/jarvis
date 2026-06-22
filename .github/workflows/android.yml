@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]  # Runs every time you push to the main branch
+    branches: [ main ]
 
 jobs:
   build:
@@ -20,25 +20,50 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libffi-dev distutils python3-setuptools git zip unzip openjdk-17-jdk
+        sudo apt-get install -y \
+          libffi-dev \
+          distutils \
+          python3-setuptools \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk
 
     - name: Install Buildozer
       run: |
         pip install --upgrade pip
-        # "cython<3.0.0" is used here to avoid compilation issues with certain p4a dependencies
         pip install "cython<3.0.0" buildozer
 
     - name: Generate Spec File
       run: buildozer init
 
-    - name: Configure Spec File for Flask & WebView
+    - name: Configure Spec File
       run: |
-        # Injects pyjnius along with python3, kivy, and flask
-        sed -i 's/^requirements = .*/requirements = python3, kivy, pyjnius, flask, requests/' buildozer.spec
-        # Requests storage permissions and Android's broad MANAGE_EXTERNAL_STORAGE access
-        sed -i 's/^#android.permissions = .*/android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE/' buildozer.spec
-        # Locks API targeting to version 33 for modern compatibility
-        sed -i 's/^#android.api = .*/android.api = 33/' buildozer.spec
+        python -c "
+        f = open('buildozer.spec', 'r')
+        data = f.read()
+        f.close()
+        
+        lines = data.split('\n')
+        for i, line in enumerate(lines):
+            if line.startswith('requirements ='):
+                r = 'requirements = python3, kivy, '
+                r += 'pyjnius, flask, requests'
+                lines[i] = r
+            elif line.startswith('#android.permissions ='):
+                p = 'android.permissions = INTERNET, '
+                p += 'READ_EXTERNAL_STORAGE, '
+                p += 'WRITE_EXTERNAL_STORAGE, '
+                p += 'MANAGE_EXTERNAL_STORAGE'
+                lines[i] = p
+            elif line.startswith('#android.api ='):
+                lines[i] = 'android.api = 33'
+                
+        data = '\n'.join(lines)
+        f = open('buildozer.spec', 'w')
+        f.write(data)
+        f.close()
+        "
 
     - name: Build APK with Buildozer
       run: buildozer android debug
