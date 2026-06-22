@@ -9,12 +9,23 @@ app = Flask(__name__)
 
 # --- SYSTEM CONFIGURATION ---
 if os.path.exists('/storage/emulated/0/'):
-    BASE_DIR = '/storage/emulated/0/'  # Android Termux
+    BASE_DIR = '/storage/emulated/0/'  # Android Storage
 else:
     BASE_DIR = os.path.expanduser('~') # PC/Mac
 
 CURRENT_DIR = BASE_DIR
 PENDING_DELETE = None 
+
+# --- ANDROID RUNTIME PERMISSIONS ---
+def request_android_permissions():
+    try:
+        from android.permissions import request_permissions, Permission
+        request_permissions([
+            Permission.READ_EXTERNAL_STORAGE, 
+            Permission.WRITE_EXTERNAL_STORAGE
+        ])
+    except Exception as e:
+        print("Android runtime permissions skipped (non-Android or error):", e)
 
 # --- SAFE PATH ENCODING ---
 def safe_encode(path):
@@ -23,7 +34,7 @@ def safe_encode(path):
 def safe_decode(b64_str):
     return base64.b64decode(b64_str.encode('utf-8')).decode('utf-8')
 
-# --- FILE SYSTEM ENGINES ---
+# --- FILE SYSTEM ENGINES WITH SECURITY SHIELDS ---
 def get_dir_contents(path):
     try:
         items = os.listdir(path)
@@ -36,31 +47,37 @@ def get_dir_contents(path):
 def global_search(target, filter_exts=None, limit=40):
     results = []
     target = target.lower()
-    for root, dirs, files in os.walk(BASE_DIR):
-        if '/Android/data' in root or '/.' in root: continue 
-        
-        if not filter_exts:
-            for d in dirs:
-                if target in d.lower(): results.append(os.path.join(root, d))
-                
-        for f in files:
-            if target in f.lower() or (filter_exts and any(f.lower().endswith(ext) for ext in filter_exts)):
-                if filter_exts and target == "" and not any(f.lower().endswith(ext) for ext in filter_exts): continue
-                if target in f.lower() or target == "": results.append(os.path.join(root, f))
-                
-        if len(results) >= limit: break 
+    try:
+        for root, dirs, files in os.walk(BASE_DIR):
+            if '/Android/data' in root or '/.' in root: continue 
+            
+            if not filter_exts:
+                for d in dirs:
+                    if target in d.lower(): results.append(os.path.join(root, d))
+                    
+            for f in files:
+                if target in f.lower() or (filter_exts and any(f.lower().endswith(ext) for ext in filter_exts)):
+                    if filter_exts and target == "" and not any(f.lower().endswith(ext) for ext in filter_exts): continue
+                    if target in f.lower() or target == "": results.append(os.path.join(root, f))
+                    
+            if len(results) >= limit: break 
+    except Exception:
+        pass  # Safely bypass permission blocked directories
     return results
 
 def smart_jump_search(target):
     target = target.lower().replace('s', '') 
-    for d in os.listdir(CURRENT_DIR):
-        if os.path.isdir(os.path.join(CURRENT_DIR, d)) and target in d.lower().replace('s', ''):
-            return os.path.join(CURRENT_DIR, d)
-    for root, dirs, files in os.walk(BASE_DIR):
-        if '/Android/data' in root or '/.' in root: continue
-        for d in dirs:
-            if target == d.lower().replace('s', ''):
-                return os.path.join(root, d)
+    try:
+        for d in os.listdir(CURRENT_DIR):
+            if os.path.isdir(os.path.join(CURRENT_DIR, d)) and target in d.lower().replace('s', ''):
+                return os.path.join(CURRENT_DIR, d)
+        for root, dirs, files in os.walk(BASE_DIR):
+            if '/Android/data' in root or '/.' in root: continue
+            for d in dirs:
+                if target == d.lower().replace('s', ''):
+                    return os.path.join(root, d)
+    except Exception:
+        pass
     return None
 
 def extract_pdf_text(filepath):
@@ -78,21 +95,26 @@ def deep_content_search(word, pdf_only=False):
     valid_text_exts = ['.txt', '.py', '.js', '.html', '.css', '.json', '.md', '.csv']
     missing_module = False
 
-    for root, dirs, files in os.walk(BASE_DIR):
-        if '/Android/data' in root or '/.' in root: continue
-        for f in files:
-            filepath = os.path.join(root, f)
-            if pdf_only and f.lower().endswith('.pdf'):
-                content = extract_pdf_text(filepath)
-                if content == "MISSING_MODULE": missing_module = True
-                elif word in content: results.append(filepath)
-            elif not pdf_only and any(f.endswith(ext) for ext in valid_text_exts):
-                if os.path.getsize(filepath) < 2 * 1024 * 1024: 
-                    try:
-                        with open(filepath, 'r', encoding='utf-8', errors='ignore') as doc:
-                            if word in doc.read().lower(): results.append(filepath)
-                    except: pass
-            if len(results) >= 20: return results, missing_module
+    try:
+        for root, dirs, files in os.walk(BASE_DIR):
+            if '/Android/data' in root or '/.' in root: continue
+            for f in files:
+                filepath = os.path.join(root, f)
+                try:
+                    if pdf_only and f.lower().endswith('.pdf'):
+                        content = extract_pdf_text(filepath)
+                        if content == "MISSING_MODULE": missing_module = True
+                        elif word in content: results.append(filepath)
+                    elif not pdf_only and any(f.endswith(ext) for ext in valid_text_exts):
+                        # Safeguard file size check
+                        if os.path.getsize(filepath) < 2 * 1024 * 1024: 
+                            with open(filepath, 'r', encoding='utf-8', errors='ignore') as doc:
+                                if word in doc.read().lower(): results.append(filepath)
+                except Exception:
+                    pass
+                if len(results) >= 20: return results, missing_module
+    except Exception:
+        pass
     return results, missing_module
 
 # --- HTML & JAVASCRIPT ---
@@ -456,13 +478,16 @@ def home(): return render_template_string(HTML_TEMPLATE)
 
 @app.route('/view')
 def view_file():
-    path = safe_decode(request.args.get('path'))
-    raw = request.args.get('raw')
-    if os.path.exists(path):
-        if raw:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f: return f.read()
-        return send_file(path, as_attachment=False)
-    return "Not found", 404
+    try:
+        path = safe_decode(request.args.get('path'))
+        raw = request.args.get('raw')
+        if os.path.exists(path):
+            if raw:
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f: return f.read()
+            return send_file(path, as_attachment=False)
+        return "Not found", 404
+    except Exception as e:
+        return f"Error: {e}", 500
 
 @app.route('/save_file', methods=['POST'])
 def save_file():
@@ -486,16 +511,19 @@ def build_ui_payload(items_list, is_search=False):
     txt_exts = ['.txt', '.py', '.js', '.html', '.css', '.json', '.csv', '.md', '.log']
     
     for item in items_list:
-        name = os.path.basename(item)
-        full_path = os.path.join(CURRENT_DIR, item) if not is_search else item
-        
-        type_str = 'file'
-        if os.path.isdir(full_path): type_str = 'folder'
-        elif name.lower().endswith('.pdf'): type_str = 'pdf'
-        elif any(name.lower().endswith(e) for e in img_exts): type_str = 'img'
-        elif any(name.lower().endswith(e) for e in txt_exts): type_str = 'txt'
+        try:
+            name = os.path.basename(item)
+            full_path = os.path.join(CURRENT_DIR, item) if not is_search else item
+            
+            type_str = 'file'
+            if os.path.isdir(full_path): type_str = 'folder'
+            elif name.lower().endswith('.pdf'): type_str = 'pdf'
+            elif any(name.lower().endswith(e) for e in img_exts): type_str = 'img'
+            elif any(name.lower().endswith(e) for e in txt_exts): type_str = 'txt'
 
-        payload.append({"name": name, "type": type_str, "b64": safe_encode(full_path)})
+            payload.append({"name": name, "type": type_str, "b64": safe_encode(full_path)})
+        except Exception:
+            pass
     return payload
 
 @app.route('/chat', methods=['POST'])
@@ -567,22 +595,28 @@ def chat():
                 if idx + 1 < len(words):
                     p_name = words[idx+1]
                     if p_name == "folder" and idx + 2 < len(words): p_name = words[idx+2]
-                    for d in os.listdir(CURRENT_DIR):
-                        if d.lower() == p_name.lower() and os.path.isdir(os.path.join(CURRENT_DIR, d)):
-                            parent_dir = os.path.join(CURRENT_DIR, d)
-                            break
+                    try:
+                        for d in os.listdir(CURRENT_DIR):
+                            if d.lower() == p_name.lower() and os.path.isdir(os.path.join(CURRENT_DIR, d)):
+                                parent_dir = os.path.join(CURRENT_DIR, d)
+                                break
+                    except Exception:
+                        pass
                 break
                 
         target_name = words[-1]
         for w in words:
             if "." in w: target_name = w
             
-        if is_folder:
-            os.makedirs(os.path.join(parent_dir, target_name), exist_ok=True)
-            res["reply"] = f"Folder '{target_name}' successfully created."
-        else:
-            open(os.path.join(parent_dir, target_name), 'a').close()
-            res["reply"] = f"File '{target_name}' successfully generated."
+        try:
+            if is_folder:
+                os.makedirs(os.path.join(parent_dir, target_name), exist_ok=True)
+                res["reply"] = f"Folder '{target_name}' successfully created."
+            else:
+                open(os.path.join(parent_dir, target_name), 'a').close()
+                res["reply"] = f"File '{target_name}' successfully generated."
+        except Exception as e:
+            res["reply"] = f"Failed to generate item: {e}"
         return jsonify(res)
 
     # 4. Safe Deletion 
@@ -590,10 +624,13 @@ def chat():
     if m_del:
         target = m_del.group(1).strip()
         matched = None
-        for f in os.listdir(CURRENT_DIR):
-            if f.lower() == target.lower():
-                matched = f
-                break
+        try:
+            for f in os.listdir(CURRENT_DIR):
+                if f.lower() == target.lower():
+                    matched = f
+                    break
+        except Exception:
+            pass
         
         if matched:
             PENDING_DELETE = os.path.join(CURRENT_DIR, matched)
@@ -675,16 +712,19 @@ def chat():
         potential_files = global_search(filename)
         matched_files = []
         for filepath in potential_files:
-            if os.path.isfile(filepath):
-                if filepath.lower().endswith('.pdf'):
-                    content = extract_pdf_text(filepath)
-                    if content != "MISSING_MODULE" and target_word in content: matched_files.append(filepath)
-                else:
-                    if os.path.getsize(filepath) < 2 * 1024 * 1024:
-                        try:
-                            with open(filepath, 'r', encoding='utf-8', errors='ignore') as doc:
-                                if target_word in doc.read().lower(): matched_files.append(filepath)
-                        except: pass
+            try:
+                if os.path.isfile(filepath):
+                    if filepath.lower().endswith('.pdf'):
+                        content = extract_pdf_text(filepath)
+                        if content != "MISSING_MODULE" and target_word in content: matched_files.append(filepath)
+                    else:
+                        if os.path.getsize(filepath) < 2 * 1024 * 1024:
+                            try:
+                                with open(filepath, 'r', encoding='utf-8', errors='ignore') as doc:
+                                    if target_word in doc.read().lower(): matched_files.append(filepath)
+                            except: pass
+            except Exception:
+                pass
                         
         if matched_files:
             res["reply"] += " Match found."
@@ -728,4 +768,7 @@ def chat():
     return jsonify(res)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # Try requesting storage permissions at start
+    request_android_permissions()
+    # Run the Flask app
+    app.run(host='127.0.0.1', port=5000, debug=False)
