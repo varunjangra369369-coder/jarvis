@@ -20,6 +20,10 @@ for i, line in enumerate(lines):
     elif 'android.accept_sdk_license' in line:
         lines[i] = 'android.accept_sdk_license = True'
 
+    # Limit architectures to arm64-v8a only (saves RAM and compile time)
+    elif line.strip().startswith('android.archs ='):
+        lines[i] = 'android.archs = arm64-v8a'
+
 data = '\n'.join(lines)
 f = open('buildozer.spec', 'w')
 f.write(data)
