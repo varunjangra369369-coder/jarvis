@@ -39,11 +39,11 @@ jobs:
 
     - name: Configure Spec File
       run: |
-        python -c "
+        cat << 'EOF' > config.py
         f = open('buildozer.spec', 'r')
         data = f.read()
         f.close()
-        
+
         lines = data.split('\n')
         for i, line in enumerate(lines):
             if line.startswith('requirements ='):
@@ -58,12 +58,13 @@ jobs:
                 lines[i] = p
             elif line.startswith('#android.api ='):
                 lines[i] = 'android.api = 33'
-                
+
         data = '\n'.join(lines)
         f = open('buildozer.spec', 'w')
         f.write(data)
         f.close()
-        "
+        EOF
+        python config.py
 
     - name: Build APK with Buildozer
       run: buildozer android debug
