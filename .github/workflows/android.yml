@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]  # Runs every time you push to the main branch
 
 jobs:
   build:
@@ -25,17 +25,20 @@ jobs:
     - name: Install Buildozer
       run: |
         pip install --upgrade pip
-        pip install buildozer cython git+https://github.com
+        # "cython<3.0.0" is used here to avoid compilation issues with certain p4a dependencies
+        pip install "cython<3.0.0" buildozer
 
     - name: Generate Spec File
       run: buildozer init
 
-    - name: Configure Spec File for Flask
+    - name: Configure Spec File for Flask & WebView
       run: |
-        # This replaces the default requirements with Python, Kivy, and Flask automatically
-        sed -i 's/^requirements = .*/requirements = python3, kivy, flask, requests/' buildozer.spec
-        # This injects the broad storage permissions you need for local file handling
-        sed -i 's/^#android.permissions = .*/android.permissions = READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE/' buildozer.spec
+        # Injects pyjnius along with python3, kivy, and flask
+        sed -i 's/^requirements = .*/requirements = python3, kivy, pyjnius, flask, requests/' buildozer.spec
+        # Injects the broad storage permissions you need for local file handling
+        sed -i 's/^#android.permissions = .*/android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE/' buildozer.spec
+        # Locks API targeting to version 33 for modern compatibility
+        sed -i 's/^#android.api = .*/android.api = 33/' buildozer.spec
 
     - name: Build APK with Buildozer
       run: buildozer android debug
