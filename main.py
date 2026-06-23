@@ -16,6 +16,30 @@ else:
 CURRENT_DIR = BASE_DIR
 PENDING_DELETE = None 
 
+# --- NATIVE TEXT-TO-SPEECH ENGINE (Via PyJnius) ---
+_tts = None
+def native_speak(text):
+    global _tts
+    try:
+        from jnius import autoclass
+        if _tts is None:
+            Locale = autoclass('java.util.Locale')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            TextToSpeech = autoclass('android.speech.tts.TextToSpeech')
+            # Initialize Native Android TTS engine
+            _tts = TextToSpeech(PythonActivity.mActivity, None)
+            # Give it a brief moment to initialize
+            import time
+            time.sleep(0.5)
+            _tts.setLanguage(Locale.US)
+        
+        # Clean the text string
+        clean = text.replace('J.A.R.V.I.S.', 'Jarvis').replace('J.A.R.V.I.S', 'Jarvis')
+        # Queue Flush is 0 (TextToSpeech.QUEUE_FLUSH)
+        _tts.speak(clean, 0, None)
+    except Exception as e:
+        print("Android Native TTS engine failed or skipped:", e)
+
 # --- SAFE NATIVE PERMISSION HANDLER (Android 10 Specific) ---
 def request_android_permissions():
     try:
@@ -152,7 +176,7 @@ HTML_TEMPLATE = r"""
         
         .bubble { max-width: 85%; padding: 10px 15px; border-radius: 8px; line-height: 1.4; word-wrap: break-word; }
         .bubble-user { background: rgba(255, 255, 255, 0.1); color: #fff; border-bottom-right-radius: 0; border: 1px solid rgba(255,255,255,0.2); }
-        .bubble-jarvis { background: rgba(0, 212, 255, 0.1); color: #00d4ff; border-bottom-left-radius: 0; border: 1px solid rgba(0,212,255,0.3); box-shadow: 0 0 10px rgba(0,212,255,0.1); }
+        .bubble-jarvis { background: rgba(0, 212, 255, 0.1); color: #00d4ff; border-bottom-left-radius: 0; border: 1px solid rgba(0,212,255,0.3); box-shadow: 0 0 10px rgba(255,212,255,0.1); }
         .bubble-warning { background: rgba(255, 51, 51, 0.1); color: #ff3333; border: 1px solid #ff3333; box-shadow: 0 0 10px rgba(255,51,51,0.2); animation: pulse-warn 1.5s infinite; }
         @keyframes pulse-warn { 50% { box-shadow: 0 0 20px rgba(255,51,51,0.5); } }
 
@@ -278,7 +302,6 @@ HTML_TEMPLATE = r"""
                 
                 let msgClass = data.is_warning ? "warning" : "jarvis";
                 appendChat("J.A.R.V.I.S.", data.reply, msgClass);
-                speak(data.reply);
 
                 if(data.action === 'show_ui') renderUI(data);
                 
@@ -370,24 +393,16 @@ HTML_TEMPLATE = r"""
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        function speak(text) {
-            try {
-                if (!window.speechSynthesis) return;
-                window.speechSynthesis.cancel();
-                let clean = text.replace(/J\.A\.R\.V\.I\.S\./g, 'Jarvis').replace(/[^a-zA-Z0-9\s,.]/g, '');
-                const u = new SpeechSynthesisUtterance(clean);
-                u.rate = 1.0; u.pitch = 0.8;
-                window.speechSynthesis.speak(u);
-            } catch (e) {
-                console.error("TTS speech failed:", e);
-            }
-        }
-
         function checkBattery() {
             if(navigator.getBattery) {
                 navigator.getBattery().then(b => {
                     let msg = `Sir, your battery is currently at ${Math.round(b.level * 100)} percent.`;
-                    appendChat("J.A.R.V.I.S.", msg, "jarvis"); speak(msg);
+                    appendChat("J.A.R.V.I.S.", msg, "jarvis"); 
+                    // Call backend speak
+                    fetch('/speak_api', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text: msg })
+                    });
                 });
             }
         }
@@ -510,6 +525,12 @@ def save_image():
     with open(path, "wb") as fh: fh.write(base64.b64decode(b64_data))
     return jsonify({"success": True})
 
+@app.route('/speak_api', methods=['POST'])
+def speak_api():
+    d = request.json
+    native_speak(d.get('text', ''))
+    return jsonify({"success": True})
+
 def build_ui_payload(items_list, is_search=False):
     payload = []
     img_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
@@ -549,32 +570,39 @@ def chat():
                 res["reply"] = "Item permanently deleted from the system, sir."
             except Exception as e: res["reply"] = f"Error: {e}"
             PENDING_DELETE = None
+            native_speak(res["reply"])
             return jsonify(res)
         elif any(w in words for w in ["no", "n", "cancel", "stop", "abort"]):
             PENDING_DELETE = None
             res["reply"] = "Deletion aborted. Your files are secure."
+            native_speak(res["reply"])
             return jsonify(res)
 
     # 1. Identity & Core Basics
     if any(phrase in msg_clean for phrase in ["who are you", "your name", "what are you"]):
         res["reply"] = "I am J.A.R.V.I.S., your localized Artificial Intelligence operating system, designed to manage and optimize your device."
+        native_speak(res["reply"])
         return jsonify(res)
         
     if any(w in words for w in ["hi", "hello", "hey", "wake", "greetings"]):
         res["reply"] = "Greetings, sir. J.A.R.V.I.S. is online and awaiting your command."
+        native_speak(res["reply"])
         return jsonify(res)
         
     if any(phrase in msg_clean for phrase in ["what can you do", "what you can do", "help", "features"]):
         res["reply"] = "I can manage your device hierarchy, search files, load PDFs and images, edit code, open websites, and execute localized commands. Just ask."
+        native_speak(res["reply"])
         return jsonify(res)
         
     if "time" in words:
         res["reply"] = f"It is currently {datetime.datetime.now().strftime('%I:%M %p')}."
+        native_speak(res["reply"])
         return jsonify(res)
         
     if "battery" in words or "power" in words:
         res["reply"] = "Checking power diagnostic matrices."
         res["action"] = "battery"
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 2. Dynamic Web URLs
@@ -587,6 +615,7 @@ def chat():
             res["action"] = "open_url"
             res["url"] = f"https://www.{target}"
             res["reply"] = f"Establishing connection to {target}."
+            native_speak(res["reply"])
             return jsonify(res)
 
     # 3. File / Folder Creation
@@ -622,6 +651,7 @@ def chat():
                 res["reply"] = f"File '{target_name}' successfully generated."
         except Exception as e:
             res["reply"] = f"Failed to generate item: {e}"
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 4. Safe Deletion 
@@ -643,6 +673,7 @@ def chat():
             res["is_warning"] = True
         else: 
             res["reply"] = f"Cannot delete. '{target}' not found in this sector."
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 5. Fullscreen Gallery Engine
@@ -652,6 +683,7 @@ def chat():
         res["action"] = "show_ui"
         res["context"] = "gallery"
         res["items"] = build_ui_payload(results, is_search=True)
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 6. PDF Engine
@@ -668,6 +700,7 @@ def chat():
         res["action"] = "show_ui"
         res["context"] = "search"
         res["items"] = build_ui_payload(results, is_search=True)
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 7. Navigation
@@ -679,6 +712,7 @@ def chat():
         res["context"] = "dir"
         res["path_display"] = CURRENT_DIR
         res["items"] = build_ui_payload(folders + files)
+        native_speak(res["reply"])
         return jsonify(res)
 
     if any(phrase in msg_clean for phrase in ["show folder", "show folders", "folders", "folder", "files", "show files", "browse"]):
@@ -689,6 +723,7 @@ def chat():
         res["context"] = "dir"
         res["path_display"] = CURRENT_DIR
         res["items"] = build_ui_payload(folders + files)
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 8. Jump / Open Folder
@@ -705,6 +740,7 @@ def chat():
             res["context"] = "dir"
             res["path_display"] = CURRENT_DIR
             res["items"] = build_ui_payload(folders + files)
+            native_speak(res["reply"])
             return jsonify(res)
 
     # 9. Find text inside a specific file
@@ -738,6 +774,7 @@ def chat():
             res["items"] = build_ui_payload(matched_files, is_search=True)
         else:
             res["reply"] = f"The text '{target_word}' was not found inside '{filename}'."
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 10. Deep Content Word Search (General)
@@ -755,6 +792,7 @@ def chat():
         res["action"] = "show_ui"
         res["context"] = "search"
         res["items"] = build_ui_payload(results, is_search=True)
+        native_speak(res["reply"])
         return jsonify(res)
 
     # 11. Global File Search
@@ -766,13 +804,13 @@ def chat():
         res["action"] = "show_ui"
         res["context"] = "search"
         res["items"] = build_ui_payload(results, is_search=True)
+        native_speak(res["reply"])
         return jsonify(res)
 
     res["reply"] = "Command unverified. Please state your directive clearly, sir."
+    native_speak(res["reply"])
     return jsonify(res)
 
 if __name__ == '__main__':
-    # Request standard permissions only
     request_android_permissions()
-    # Run the server on 0.0.0.0 (IPv4 + IPv6 local binding)
     app.run(host='0.0.0.0', port=5000, debug=False)
