@@ -16,16 +16,45 @@ else:
 CURRENT_DIR = BASE_DIR
 PENDING_DELETE = None 
 
-# --- ANDROID RUNTIME PERMISSIONS ---
+# --- ANDROID RUNTIME PERMISSIONS (Using safe PyJnius) ---
 def request_android_permissions():
     try:
-        from android.permissions import request_permissions, Permission
-        request_permissions([
-            Permission.READ_EXTERNAL_STORAGE, 
-            Permission.WRITE_EXTERNAL_STORAGE
-        ])
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        activity = PythonActivity.mActivity
+        
+        # Regular storage & media permissions (Android 13+ compatibility)
+        permissions = [
+            "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.READ_MEDIA_VIDEO",
+            "android.permission.READ_MEDIA_AUDIO"
+        ]
+        
+        # Request standard runtime permissions
+        activity.requestPermissions(permissions, 101)
+        
+        # Request All Files Access (MANAGE_EXTERNAL_STORAGE) if on Android 11+ (API 30+)
+        Build = autoclass("android.os.Build")
+        if Build.VERSION.SDK_INT >= 30:
+            Environment = autoclass("android.os.Environment")
+            if not Environment.isExternalStorageManager():
+                Intent = autoclass("android.content.Intent")
+                Settings = autoclass("android.provider.Settings")
+                Uri = autoclass("android.net.Uri")
+                
+                try:
+                    # Direct user to toggle "Allow access to manage all files" for this specific app
+                    intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.setData(Uri.parse(f"package:{activity.getPackageName()}"))
+                    activity.startActivity(intent)
+                except Exception:
+                    # Fallback to the general settings manager page
+                    intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    activity.startActivity(intent)
     except Exception as e:
-        print("Android runtime permissions skipped (non-Android or error):", e)
+        print("Android native permission request skipped/failed:", e)
 
 # --- SAFE PATH ENCODING ---
 def safe_encode(path):
@@ -62,7 +91,7 @@ def global_search(target, filter_exts=None, limit=40):
                     
             if len(results) >= limit: break 
     except Exception:
-        pass  # Safely bypass permission blocked directories
+        pass  
     return results
 
 def smart_jump_search(target):
@@ -106,7 +135,6 @@ def deep_content_search(word, pdf_only=False):
                         if content == "MISSING_MODULE": missing_module = True
                         elif word in content: results.append(filepath)
                     elif not pdf_only and any(f.endswith(ext) for ext in valid_text_exts):
-                        # Safeguard file size check
                         if os.path.getsize(filepath) < 2 * 1024 * 1024: 
                             with open(filepath, 'r', encoding='utf-8', errors='ignore') as doc:
                                 if word in doc.read().lower(): results.append(filepath)
@@ -125,23 +153,19 @@ HTML_TEMPLATE = r"""
     <title>J.A.R.V.I.S. Core OS</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* SCROLLBARS */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #030712; }
         ::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.5); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
 
-        /* BASE THEME */
         body { background: radial-gradient(circle at top, #0a1128 0%, #030712 100%); color: #00d4ff; font-family: 'Consolas', 'Courier New', monospace; text-align: center; padding: 15px; margin: 0; min-height: 100vh; overflow-x: hidden; }
         h1 { letter-spacing: 8px; text-shadow: 0 0 15px #00d4ff, 0 0 30px #00d4ff; margin-top: 5px; font-size: 2em; font-weight: 900; }
         
-        /* MICROPHONE PULSE */
         .circle { width: 85px; height: 85px; border: 2px solid #00d4ff; border-radius: 50%; margin: 15px auto; box-shadow: 0 0 20px rgba(0,212,255,0.4), inset 0 0 20px rgba(0,212,255,0.2); animation: pulse 2.5s infinite; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s ease; background: rgba(0, 212, 255, 0.05); backdrop-filter: blur(5px); }
         .circle:hover { transform: scale(1.1); box-shadow: 0 0 40px #00d4ff, inset 0 0 30px #00d4ff; background: rgba(0, 212, 255, 0.15); }
         .circle span { font-weight: bold; font-size: 0.85em; letter-spacing: 2px; text-shadow: 0 0 5px #00d4ff; }
         @keyframes pulse { 0% { box-shadow: 0 0 10px rgba(0,212,255,0.4); } 50% { box-shadow: 0 0 35px rgba(0,212,255,0.8); } 100% { box-shadow: 0 0 10px rgba(0,212,255,0.4); } }
         
-        /* CHAT INTERFACE */
         #chat-box { height: 45vh; overflow-y: auto; padding: 15px; margin-bottom: 20px; text-align: left; background: rgba(3, 7, 18, 0.7); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 12px; font-size: 0.95em; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 10px; }
         .msg-container { width: 100%; display: flex; flex-direction: column; }
         .msg-container.user { align-items: flex-end; }
@@ -154,23 +178,19 @@ HTML_TEMPLATE = r"""
         .bubble-warning { background: rgba(255, 51, 51, 0.1); color: #ff3333; border: 1px solid #ff3333; box-shadow: 0 0 10px rgba(255,51,51,0.2); animation: pulse-warn 1.5s infinite; }
         @keyframes pulse-warn { 50% { box-shadow: 0 0 20px rgba(255,51,51,0.5); } }
 
-        /* HUD SYSTEM BOX */
         .sys-box { width: 100%; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 212, 255, 0.4); padding: 15px; border-radius: 8px; margin-top: 5px; box-sizing: border-box; box-shadow: inset 0 0 20px rgba(0,212,255,0.05); }
         .path-header { color: #888; font-size: 0.85em; margin-bottom: 12px; word-wrap: break-word; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;}
         
-        /* LIST VIEW */
         .item-row { display: flex; align-items: center; padding: 8px; border-radius: 6px; transition: all 0.2s ease; margin-bottom: 2px; }
         .item-row:hover { background: rgba(0, 212, 255, 0.1); transform: translateX(5px); border-left: 3px solid #00d4ff; }
         .item-name { cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95em; }
         .rich-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(0,212,255,0.5); transition: 0.3s;}
         
-        /* GRID VIEW (FOR PHOTO GALLERY) */
         .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; padding: 5px; }
         .gallery-item { position: relative; cursor: pointer; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,212,255,0.3); transition: 0.3s; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
         .gallery-item:hover { transform: scale(1.08); border-color: #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.8); z-index: 10; }
         .gallery-img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* COLORS */
         .color-folder { color: #f4c20d; font-weight: bold; }
         .color-img { color: #00ffaa; }
         .color-txt { color: #aaaaaa; }
@@ -180,7 +200,6 @@ HTML_TEMPLATE = r"""
         .back-link { color: #ff00ff; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 15px; font-weight: bold; transition: 0.2s; padding: 5px 10px; background: rgba(255,0,255,0.1); border-radius: 5px; border: 1px solid rgba(255,0,255,0.3); }
         .back-link:hover { background: rgba(255,0,255,0.2); box-shadow: 0 0 10px rgba(255,0,255,0.4); }
         
-        /* INPUT AREA */
         .input-area { display: flex; gap: 8px; justify-content: center; width: 100%; max-width: 700px; margin: auto; }
         input[type="text"] { flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #00d4ff; color: white; padding: 12px 15px; border-radius: 8px; outline: none; transition: 0.3s; font-family: inherit; font-size: 1em; }
         input[type="text"]:focus { box-shadow: 0 0 15px rgba(0,212,255,0.3); background: rgba(0, 0, 0, 0.8); }
@@ -189,20 +208,16 @@ HTML_TEMPLATE = r"""
         
         #status { font-size: 0.8em; color: #555; margin-top: 15px; letter-spacing: 2px; text-transform: uppercase; }
 
-        /* MODALS */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(3, 7, 18, 0.95); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(10px); }
         .modal-content { width: 100%; max-width: 900px; background: rgba(10, 10, 10, 0.9); border: 1px solid #00d4ff; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0,212,255,0.1); }
         .close-x { color: #ff3333; position: absolute; right: 20px; top: 15px; font-size: 35px; cursor: pointer; font-weight: bold; transition: 0.2s; z-index: 1001; text-shadow: 0 0 10px rgba(255,51,51,0.5);}
         .close-x:hover { text-shadow: 0 0 20px #ff3333; transform: scale(1.1); }
         
-        /* TEXT EDITOR */
         textarea { width: 100%; height: 60vh; background: #050505; color: #00ff00; border: 1px solid rgba(0,212,255,0.3); padding: 15px; font-family: monospace; resize: none; box-sizing: border-box; border-radius: 8px; font-size: 14px;}
         textarea:focus { outline: none; border-color: #00d4ff; box-shadow: inset 0 0 10px rgba(0,212,255,0.1); }
         
-        /* CANVAS EDITOR */
         canvas { max-width: 100%; max-height: 60vh; border: 1px solid rgba(0,212,255,0.5); background: #000; touch-action: none; align-self: center; border-radius: 8px; box-shadow: 0 0 20px rgba(0,212,255,0.2);}
         
-        /* FULLSCREEN LIGHTBOX */
         #lightboxModal .modal-content { background: transparent; border: none; box-shadow: none; align-items: center; max-width: 100vw; justify-content: center; padding: 0;}
         #lightbox-img { max-width: 95vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 0 40px rgba(0,212,255,0.5); border: 1px solid #00d4ff; }
         
@@ -220,7 +235,6 @@ HTML_TEMPLATE = r"""
     </div>
     <div id="status">System: Online & Secure</div>
 
-    <!-- Fullscreen Image Lightbox -->
     <div id="lightboxModal" class="modal">
         <span class="close-x" onclick="closeModal('lightboxModal')">&times;</span>
         <div class="modal-content">
@@ -231,7 +245,6 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- Text Editor Modal -->
     <div id="textModal" class="modal">
         <div class="modal-content" style="position: relative;">
             <span class="close-x" onclick="closeModal('textModal')">&times;</span>
@@ -245,7 +258,6 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- Image Editor Modal -->
     <div id="imageModal" class="modal">
         <div class="modal-content" style="position: relative;">
             <span class="close-x" onclick="closeModal('imageModal')">&times;</span>
@@ -309,7 +321,6 @@ HTML_TEMPLATE = r"""
                 html += `<div class="path-header">Database Search Results:</div>`;
             }
 
-            // IF GALLERY MODE - RENDER GRID
             if (data.context === 'gallery') {
                 html += `<div class="gallery-grid">`;
                 data.items.forEach(item => {
@@ -320,7 +331,6 @@ HTML_TEMPLATE = r"""
                 });
                 html += `</div>`;
             } 
-            // NORMAL LIST MODE
             else {
                 data.items.forEach(item => {
                     let viewUrl = `/view?path=${item.b64}`;
@@ -335,7 +345,7 @@ HTML_TEMPLATE = r"""
                     } else if(item.type === 'img') {
                         icon = `<img src="${viewUrl}" class="rich-thumb" loading="lazy">`; 
                         colorClass = 'color-img';
-                        action = `viewFullscreen('${item.b64}')`; // Opens Lightbox
+                        action = `viewFullscreen('${item.b64}')`;
                     } else if(item.type === 'txt') {
                         icon = '📄'; colorClass = 'color-txt';
                         action = `openTxt('${item.b64}')`;
@@ -386,7 +396,6 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        /* --- LIGHTBOX & EDITORS --- */
         let currentImgB64 = '';
         
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
@@ -702,7 +711,7 @@ def chat():
             res["items"] = build_ui_payload(folders + files)
             return jsonify(res)
 
-    # 9. Find text inside a specific file ("Find h inside chat.py")
+    # 9. Find text inside a specific file
     m_inside = re.search(r"(?:find|search)\s+(.+?)\s+(?:in|inside)\s+([a-zA-Z0-9_\-\.]+)", msg_clean)
     if m_inside:
         target_word = m_inside.group(1).strip()
@@ -763,12 +772,11 @@ def chat():
         res["items"] = build_ui_payload(results, is_search=True)
         return jsonify(res)
 
-    # Fallback
     res["reply"] = "Command unverified. Please state your directive clearly, sir."
     return jsonify(res)
 
 if __name__ == '__main__':
-    # Try requesting storage permissions at start
+    # Request native runtime permissions inside Kivy's thread space on startup
     request_android_permissions()
-    # Run the Flask app
+    # Run the server
     app.run(host='127.0.0.1', port=5000, debug=False)
