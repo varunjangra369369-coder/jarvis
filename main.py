@@ -40,23 +40,45 @@ def native_speak(text):
     except Exception as e:
         print("Android Native TTS engine failed or skipped:", e)
 
-# --- SAFE NATIVE PERMISSION HANDLER (Android 10 Specific) ---
+# --- SAFE NATIVE PERMISSION HANDLER (Explicit UI Thread Dispatch) ---
 def request_android_permissions():
     try:
-        from jnius import autoclass
+        from jnius import autoclass, PythonJavaClass, java_method, cast
+        
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         activity = PythonActivity.mActivity
         
-        # Standard Android 10 runtime storage permissions
-        permissions = [
-            "android.permission.READ_EXTERNAL_STORAGE",
-            "android.permission.WRITE_EXTERNAL_STORAGE"
-        ]
+        # Define a Java Runnable to execute safely on Android's UI Thread
+        class Runnable(PythonJavaClass):
+            __javainterfaces__ = ['java/lang/Runnable']
+            
+            def __init__(self, func):
+                super(Runnable, self).__init__()
+                self.func = func
+                
+            @java_method('()V')
+            def run(self):
+                self.func()
+                
+        def request_on_ui_thread():
+            try:
+                permissions = [
+                    "android.permission.READ_EXTERNAL_STORAGE",
+                    "android.permission.WRITE_EXTERNAL_STORAGE"
+                ]
+                # Cast standard python list to Java String array [Ljava/lang/String;
+                java_permissions = cast('[Ljava/lang/String;', permissions)
+                activity.requestPermissions(java_permissions, 101)
+                print("Permissions requested on Android UI thread successfully.")
+            except Exception as e:
+                print("Error inside UI Thread permission request:", e)
+                
+        # Schedule the request on Android's Main/UI thread
+        runnable_instance = Runnable(request_on_ui_thread)
+        activity.runOnUiThread(runnable_instance)
         
-        # Request standard runtime permissions
-        activity.requestPermissions(permissions, 101)
     except Exception as e:
-        print("Android permission request failed or skipped:", e)
+        print("Android permission request wrapper failed:", e)
 
 # --- SAFE PATH ENCODING ---
 def safe_encode(path):
@@ -72,7 +94,8 @@ def get_dir_contents(path):
         folders = [f for f in items if os.path.isdir(os.path.join(path, f))]
         files = [f for f in items if os.path.isfile(os.path.join(path, f))]
         return sorted(folders), sorted(files)
-    except Exception:
+    except Exception as e:
+        print(f"Directory listing failed for {path}: {e}")
         return [], []
 
 def global_search(target, filter_exts=None, limit=40):
@@ -92,8 +115,8 @@ def global_search(target, filter_exts=None, limit=40):
                     if target in f.lower() or target == "": results.append(os.path.join(root, f))
                     
             if len(results) >= limit: break 
-    except Exception:
-        pass  
+    except Exception as e:
+        print(f"Global search failed: {e}")
     return results
 
 def smart_jump_search(target):
@@ -495,7 +518,6 @@ HTML_TEMPLATE = r"""
 # --- BACKEND ROUTES ---
 @app.route('/')
 def home():
-    # Calling standard storage permissions once the web browser has finished initialization
     request_android_permissions()
     return render_template_string(HTML_TEMPLATE)
 
@@ -815,5 +837,4 @@ def chat():
     return jsonify(res)
 
 if __name__ == '__main__':
-    # Standard startup without permission calls to avoid thread race conditions
     app.run(host='0.0.0.0', port=5000, debug=False)
