@@ -494,7 +494,10 @@ HTML_TEMPLATE = r"""
 
 # --- BACKEND ROUTES ---
 @app.route('/')
-def home(): return render_template_string(HTML_TEMPLATE)
+def home():
+    # Calling standard storage permissions once the web browser has finished initialization
+    request_android_permissions()
+    return render_template_string(HTML_TEMPLATE)
 
 @app.route('/view')
 def view_file():
@@ -812,5 +815,5 @@ def chat():
     return jsonify(res)
 
 if __name__ == '__main__':
-    request_android_permissions()
+    # Standard startup without permission calls to avoid thread race conditions
     app.run(host='0.0.0.0', port=5000, debug=False)
