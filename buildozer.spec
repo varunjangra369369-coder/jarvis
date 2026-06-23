@@ -14,7 +14,7 @@ source.dir = .
 # (str) Version of your application
 version = 1.0.0
 
-# (list) Source files to include (add extensions you are using)
+# (list) Source files to include
 source.include_exts = py,png,jpg,jpeg,html,css,js
 
 # (list) Application requirements
@@ -26,10 +26,12 @@ orientation = portrait
 # (bool) Use fullscreen mode
 fullscreen = 1
 
-# --- Android Specific ---
+# ==============================================================================
+# Android specific configurations
+# ==============================================================================
 
-# (list) Permissions requested by your app
-android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO
+# (list) Permissions requested by your app (Streamlined for Android 10)
+android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 
 # (int) Target Android SDK
 android.api = 33
@@ -43,13 +45,25 @@ android.accept_sdk_license = True
 # (str) Android archs to build for
 android.archs = arm64-v8a
 
-# (bool) Request legacy external storage access
-android.manifest.application_arguments = android:requestLegacyExternalStorage="true"
+# (str) Application arguments injected into AndroidManifest.xml
+# Bypasses Scoped Storage on Android 10 and permits local WebView cleartext communication
+android.manifest.application_arguments = android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true"
 
 # --- Python-for-Android WebView Setup ---
 
 # (str) Bootstrap to use (webview is required for Flask)
 p4a.bootstrap = webview
 
-# (int) Port where the flask server will run
+# (int) Port where the flask server will run (must match your main.py)
 p4a.port = 5000
+
+# ==============================================================================
+# Buildozer configurations
+# ==============================================================================
+
+[buildozer]
+# (int) Log level (0 = error only, 1 = info, 2 = debug)
+log_level = 2
+
+# (int) Display warning if buildozer is run as root
+warn_on_root = 1
