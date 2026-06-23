@@ -31,11 +31,11 @@ fullscreen = 1
 # ==============================================================================
 
 # (list) Permissions requested by your app (Streamlined for Android 10)
+# Change this from 33 to 29 (matches Android 10 legacy storage defaults)
+android.api = 29
+
+# Ensure these base permissions are declared
 android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
-
-# (int) Target Android SDK
-android.api = 33
-
 # (int) Minimum API required
 android.minapi = 21
 
@@ -46,7 +46,7 @@ android.accept_sdk_license = True
 android.archs = arm64-v8a
 
 # (str) Application arguments injected into AndroidManifest.xml
-android.manifest.application_arguments = android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true"
+#android.manifest.application_arguments = android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true"
 
 # --- Python-for-Android WebView Setup ---
 
