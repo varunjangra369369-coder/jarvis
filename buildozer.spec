@@ -29,7 +29,7 @@ fullscreen = 1
 # --- Android Specific ---
 
 # (list) Permissions requested by your app
-android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, MANAGE_EXTERNAL_STORAGE, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO
 
 # (int) Target Android SDK
 android.api = 33
