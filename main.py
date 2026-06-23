@@ -159,9 +159,9 @@ HTML_TEMPLATE = r"""
         .sys-box { width: 100%; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(0, 212, 255, 0.4); padding: 15px; border-radius: 8px; margin-top: 5px; box-sizing: border-box; box-shadow: inset 0 0 20px rgba(0,212,255,0.05); }
         .path-header { color: #888; font-size: 0.85em; margin-bottom: 12px; word-wrap: break-word; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;}
         
-        .item-row { display: flex; align-items: center; padding: 8px; border-radius: 6px; transition: all 0.2s ease; margin-bottom: 2px; }
+        .item-row { display: flex; align-items: center; padding: 8px; border-radius: 6px; transition: all 0.2s ease; margin-bottom: 2px; cursor: pointer; }
         .item-row:hover { background: rgba(0, 212, 255, 0.1); transform: translateX(5px); border-left: 3px solid #00d4ff; }
-        .item-name { cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95em; }
+        .item-name { display: flex; align-items: center; gap: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95em; }
         .rich-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(0,212,255,0.5); transition: 0.3s;}
         
         .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; padding: 5px; }
@@ -312,25 +312,21 @@ HTML_TEMPLATE = r"""
             else {
                 data.items.forEach(item => {
                     let viewUrl = `/view?path=${item.b64}`;
-                    let icon = '📦', colorClass = 'color-def', action = `window.open('${viewUrl}', '_blank')`;
+                    let icon = '📦', colorClass = 'color-def';
 
                     if(item.type === 'folder') {
                         icon = '📁'; colorClass = 'color-folder';
-                        action = `cmd(\`open folder ${item.name}\`)`;
                     } else if(item.type === 'pdf') {
                         icon = '📕'; colorClass = 'color-pdf';
-                        action = `window.open('${viewUrl}', '_blank')`;
                     } else if(item.type === 'img') {
                         icon = `<img src="${viewUrl}" class="rich-thumb" loading="lazy">`; 
                         colorClass = 'color-img';
-                        action = `viewFullscreen('${item.b64}')`;
                     } else if(item.type === 'txt') {
                         icon = '📄'; colorClass = 'color-txt';
-                        action = `openTxt('${item.b64}')`;
                     }
 
                     html += `
-                    <div class="item-row" onclick="${action}">
+                    <div class="item-row" data-type="${item.type}" data-name="${item.name}" data-b64="${item.b64}" onclick="handleItemClick(this)">
                         <div class="item-name ${colorClass}">${icon} <span style="margin-left:8px;">${item.name}</span></div>
                     </div>`;
                 });
@@ -338,6 +334,23 @@ HTML_TEMPLATE = r"""
             
             html += `</div>`;
             appendChat("System", html, "system");
+        }
+
+        function handleItemClick(el) {
+            const type = el.getAttribute('data-type');
+            const name = el.getAttribute('data-name');
+            const b64 = el.getAttribute('data-b64');
+            const viewUrl = `/view?path=${b64}`;
+
+            if (type === 'folder') {
+                cmd(`open folder ${name}`);
+            } else if (type === 'img') {
+                viewFullscreen(b64);
+            } else if (type === 'txt') {
+                openTxt(b64);
+            } else {
+                window.open(viewUrl, '_blank');
+            }
         }
 
         function cmd(text) { processInput(text); }
@@ -358,11 +371,16 @@ HTML_TEMPLATE = r"""
         }
 
         function speak(text) {
-            window.speechSynthesis.cancel();
-            let clean = text.replace(/J\.A\.R\.V\.I\.S\./g, 'Jarvis').replace(/[^a-zA-Z0-9\s,.]/g, '');
-            const u = new SpeechSynthesisUtterance(clean);
-            u.rate = 1.0; u.pitch = 0.8;
-            window.speechSynthesis.speak(u);
+            try {
+                if (!window.speechSynthesis) return;
+                window.speechSynthesis.cancel();
+                let clean = text.replace(/J\.A\.R\.V\.I\.S\./g, 'Jarvis').replace(/[^a-zA-Z0-9\s,.]/g, '');
+                const u = new SpeechSynthesisUtterance(clean);
+                u.rate = 1.0; u.pitch = 0.8;
+                window.speechSynthesis.speak(u);
+            } catch (e) {
+                console.error("TTS speech failed:", e);
+            }
         }
 
         function checkBattery() {
@@ -435,7 +453,9 @@ HTML_TEMPLATE = r"""
             ctx.filter = 'none'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height);
         }
 
-        if(t==='gray') { ctx.filter = 'grayscale(100%)'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height); }
+        function applyFilter(t) {
+            if(t==='gray') { ctx.filter = 'grayscale(100%)'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height); }
+        }
 
         cvs.onmousedown = (e) => { isDrawing=true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
         cvs.onmousemove = (e) => { if(isDrawing){ ctx.strokeStyle="#00ff00"; ctx.lineWidth=4; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); }};
