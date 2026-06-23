@@ -17,8 +17,8 @@ version = 1.0.0
 # (list) Source files to include
 source.include_exts = py,png,jpg,jpeg,html,css,js
 
-# (list) Application requirements
-requirements = python3,flask,PyPDF2,jinja2,werkzeug,click,itsdangerous
+# (list) Application requirements (Crucial: pyjnius and android are now included)
+requirements = python3,flask,pyjnius,android,PyPDF2,jinja2,werkzeug,click,itsdangerous
 
 # (str) Supported orientations (landscape, portrait or all)
 orientation = portrait
@@ -46,7 +46,6 @@ android.accept_sdk_license = True
 android.archs = arm64-v8a
 
 # (str) Application arguments injected into AndroidManifest.xml
-# Bypasses Scoped Storage on Android 10 and permits local WebView cleartext communication
 android.manifest.application_arguments = android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true"
 
 # --- Python-for-Android WebView Setup ---
@@ -54,7 +53,7 @@ android.manifest.application_arguments = android:requestLegacyExternalStorage="t
 # (str) Bootstrap to use (webview is required for Flask)
 p4a.bootstrap = webview
 
-# (int) Port where the flask server will run (must match your main.py)
+# (int) Port where the flask server will run
 p4a.port = 5000
 
 # ==============================================================================
