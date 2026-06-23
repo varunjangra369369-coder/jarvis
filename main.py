@@ -9,52 +9,30 @@ app = Flask(__name__)
 
 # --- SYSTEM CONFIGURATION ---
 if os.path.exists('/storage/emulated/0/'):
-    BASE_DIR = '/storage/emulated/0/'  # Android Storage
+    BASE_DIR = '/storage/emulated/0/'  # Root of Android Storage
 else:
-    BASE_DIR = os.path.expanduser('~') # PC/Mac
+    BASE_DIR = os.path.expanduser('~') 
 
 CURRENT_DIR = BASE_DIR
 PENDING_DELETE = None 
 
-# --- ANDROID RUNTIME PERMISSIONS (Using safe PyJnius) ---
+# --- SAFE NATIVE PERMISSION HANDLER (Android 10 Specific) ---
 def request_android_permissions():
     try:
         from jnius import autoclass
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         activity = PythonActivity.mActivity
         
-        # Regular storage & media permissions (Android 13+ compatibility)
+        # Standard Android 10 runtime storage permissions
         permissions = [
             "android.permission.READ_EXTERNAL_STORAGE",
-            "android.permission.WRITE_EXTERNAL_STORAGE",
-            "android.permission.READ_MEDIA_IMAGES",
-            "android.permission.READ_MEDIA_VIDEO",
-            "android.permission.READ_MEDIA_AUDIO"
+            "android.permission.WRITE_EXTERNAL_STORAGE"
         ]
         
         # Request standard runtime permissions
         activity.requestPermissions(permissions, 101)
-        
-        # Request All Files Access (MANAGE_EXTERNAL_STORAGE) if on Android 11+ (API 30+)
-        Build = autoclass("android.os.Build")
-        if Build.VERSION.SDK_INT >= 30:
-            Environment = autoclass("android.os.Environment")
-            if not Environment.isExternalStorageManager():
-                Intent = autoclass("android.content.Intent")
-                Settings = autoclass("android.provider.Settings")
-                Uri = autoclass("android.net.Uri")
-                
-                try:
-                    # Direct user to toggle "Allow access to manage all files" for this specific app
-                    intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.setData(Uri.parse(f"package:{activity.getPackageName()}"))
-                    activity.startActivity(intent)
-                except Exception:
-                    # Fallback to the general settings manager page
-                    intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    activity.startActivity(intent)
     except Exception as e:
-        print("Android native permission request skipped/failed:", e)
+        print("Android permission request failed or skipped:", e)
 
 # --- SAFE PATH ENCODING ---
 def safe_encode(path):
@@ -457,9 +435,7 @@ HTML_TEMPLATE = r"""
             ctx.filter = 'none'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height);
         }
 
-        function applyFilter(t) {
-            if(t==='gray') { ctx.filter = 'grayscale(100%)'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height); }
-        }
+        if(t==='gray') { ctx.filter = 'grayscale(100%)'; ctx.drawImage(imgObj, 0, 0, cvs.width, cvs.height); }
 
         cvs.onmousedown = (e) => { isDrawing=true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
         cvs.onmousemove = (e) => { if(isDrawing){ ctx.strokeStyle="#00ff00"; ctx.lineWidth=4; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); }};
@@ -776,7 +752,7 @@ def chat():
     return jsonify(res)
 
 if __name__ == '__main__':
-    # Request native runtime permissions inside Kivy's thread space on startup
+    # Request standard permissions only
     request_android_permissions()
-    # Run the server
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    # Run the server on 0.0.0.0 (IPv4 + IPv6 local binding)
+    app.run(host='0.0.0.0', port=5000, debug=False)
